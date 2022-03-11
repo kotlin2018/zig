@@ -2007,6 +2007,17 @@ pub fn writeAtom(self: *MachO, atom: *Atom, match: MatchingSection) !void {
     const sym = self.locals.items[atom.local_sym_index];
     const file_offset = sect.offset + sym.n_value - sect.addr;
     try atom.resolveRelocs(self);
+    if (comptime builtin.target.isDarwin()) blk: {
+        if (!self.base.options.target.isDarwin()) break :blk;
+        if (self.base.mach_task) |task| {
+            const nwritten = try task.writeMemProtected(
+                sym.n_value,
+                atom.code.items,
+                self.base.options.target.cpu.arch,
+            );
+            assert(nwritten == atom.code.items.len);
+        }
+    }
     log.debug("writing atom for symbol {s} at file offset 0x{x}", .{ self.getString(sym.n_strx), file_offset });
     try self.base.file.?.pwriteAll(atom.code.items, file_offset);
 }
@@ -2201,7 +2212,7 @@ fn writeAtoms(self: *MachO) !void {
         log.debug("writing atoms in {s},{s}", .{ sect.segName(), sect.sectName() });
 
         while (true) {
-            if (atom.dirty or self.invalidate_relocs) {
+            if (atom.dirty) {
                 try self.writeAtom(atom, match);
                 atom.dirty = false;
             }
@@ -4343,7 +4354,7 @@ fn populateMissingMetadata(self: *MachO) !void {
                     .vmaddr = pagezero_vmsize,
                     .vmsize = needed_size,
                     .filesize = needed_size,
-                    .maxprot = macho.PROT.READ | macho.PROT.EXEC,
+                    .maxprot = macho.PROT.READ | macho.PROT.EXEC | macho.PROT.WRITE,
                     .initprot = macho.PROT.READ | macho.PROT.EXEC,
                 },
             },
@@ -4606,7 +4617,7 @@ fn populateMissingMetadata(self: *MachO) !void {
                     .segname = makeStaticString("__LINKEDIT"),
                     .vmaddr = vmaddr,
                     .fileoff = fileoff,
-                    .maxprot = macho.PROT.READ,
+                    .maxprot = macho.PROT.READ | macho.PROT.WRITE,
                     .initprot = macho.PROT.READ,
                 },
             },
