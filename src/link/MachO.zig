@@ -2006,18 +2006,31 @@ pub fn writeAtom(self: *MachO, atom: *Atom, match: MatchingSection) !void {
     const sect = seg.sections.items[match.sect];
     const sym = self.locals.items[atom.local_sym_index];
     const file_offset = sect.offset + sym.n_value - sect.addr;
-    try atom.resolveRelocs(self);
     if (comptime builtin.target.isDarwin()) blk: {
         if (!self.base.options.target.isDarwin()) break :blk;
-        if (self.base.mach_task) |task| {
-            const nwritten = try task.writeMemProtected(
-                sym.n_value,
-                atom.code.items,
-                self.base.options.target.cpu.arch,
-            );
+        if (self.base.hcs_opts) |opts| {
+            const task = opts.mach_task.?;
+            const slide = if (!opts.disable_aslr) slide: {
+                const info = try task.getVmRegionSubmapInfo(sym.n_value, atom.code.items.len);
+                const slide = info.base_addr - pagezero_vmsize;
+                break :slide slide;
+            } else 0;
+            if (!seg.inner.isWriteable()) {
+                try task.setCurrProtection(
+                    sym.n_value + slide,
+                    atom.code.items.len,
+                    std.c.PROT.READ | std.c.PROT.WRITE | std.c.PROT.COPY,
+                );
+            }
+            try atom.resolveRelocs(self, slide);
+            const nwritten = try task.writeMem(sym.n_value + slide, atom.code.items, self.base.options.target.cpu.arch);
             assert(nwritten == atom.code.items.len);
+            defer if (!seg.inner.isWriteable()) {
+                task.setCurrProtection(sym.n_value + slide, atom.code.items.len, seg.inner.initprot) catch {};
+            };
         }
     }
+    try atom.resolveRelocs(self, 0x0);
     log.debug("writing atom for symbol {s} at file offset 0x{x}", .{ self.getString(sym.n_strx), file_offset });
     try self.base.file.?.pwriteAll(atom.code.items, file_offset);
 }
@@ -2150,7 +2163,7 @@ fn writeAllAtoms(self: *MachO) !void {
 
             log.debug("  (adding atom {s} to buffer: {})", .{ self.getString(atom_sym.n_strx), atom_sym });
 
-            try atom.resolveRelocs(self);
+            try atom.resolveRelocs(self, 0x0);
             buffer.appendSliceAssumeCapacity(atom.code.items);
 
             var i: usize = 0;

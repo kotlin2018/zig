@@ -650,7 +650,7 @@ fn addStub(target: Relocation.Target, context: RelocContext) !void {
     context.macho_file.stubs.items[stub_index] = atom;
 }
 
-pub fn resolveRelocs(self: *Atom, macho_file: *MachO) !void {
+pub fn resolveRelocs(self: *Atom, macho_file: *MachO, slide: u64) !void {
     const tracy = trace(@src());
     defer tracy.end();
 
@@ -929,7 +929,7 @@ pub fn resolveRelocs(self: *Atom, macho_file: *MachO) !void {
                         };
 
                         if (rel.length == 3) {
-                            mem.writeIntLittle(u64, self.code.items[rel.offset..][0..8], @bitCast(u64, result));
+                            mem.writeIntLittle(u64, self.code.items[rel.offset..][0..8], @bitCast(u64, result) + slide);
                         } else {
                             mem.writeIntLittle(
                                 u32,
@@ -999,7 +999,7 @@ pub fn resolveRelocs(self: *Atom, macho_file: *MachO) !void {
                         };
 
                         if (rel.length == 3) {
-                            mem.writeIntLittle(u64, self.code.items[rel.offset..][0..8], @bitCast(u64, result));
+                            mem.writeIntLittle(u64, self.code.items[rel.offset..][0..8], @bitCast(u64, result) + slide);
                         } else {
                             mem.writeIntLittle(
                                 u32,

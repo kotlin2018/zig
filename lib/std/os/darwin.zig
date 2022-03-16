@@ -24,28 +24,40 @@ const mach_task = if (builtin.target.isDarwin()) struct {
             return self.port != 0;
         }
 
-        pub fn getCurrProtection(task: MachTask, address: u64, len: usize) MachError!std.c.vm_prot_t {
-            var base_addr = address;
+        pub const Info = struct {
+            info: std.c.vm_region_submap_info_64,
+            base_addr: u64,
+        };
+
+        pub fn getVmRegionSubmapInfo(task: MachTask, address: u64, len: usize) MachError!Info {
+            var info = Info{
+                .info = undefined,
+                .base_addr = address,
+            };
             var base_len: std.c.mach_vm_size_t = if (len == 1) 2 else len;
             var objname: std.c.mach_port_t = undefined;
-            var info: std.c.vm_region_submap_info_64 = undefined;
             var count: std.c.mach_msg_type_number_t = std.c.VM_REGION_SUBMAP_SHORT_INFO_COUNT_64;
             switch (std.c.getKernError(std.c.mach_vm_region(
                 task.port,
-                &base_addr,
+                &info.base_addr,
                 &base_len,
                 std.c.VM_REGION_BASIC_INFO_64,
-                @ptrCast(std.c.vm_region_info_t, &info),
+                @ptrCast(std.c.vm_region_info_t, &info.info),
                 &count,
                 &objname,
             ))) {
-                .SUCCESS => return info.protection,
+                .SUCCESS => return info,
                 .FAILURE => return error.PermissionDenied,
                 else => |err| {
                     log.err("mach_vm_region kernel call failed with error code: {s}", .{@tagName(err)});
                     return error.Unexpected;
                 },
             }
+        }
+
+        pub fn getCurrProtection(task: MachTask, address: u64, len: usize) MachError!std.c.vm_prot_t {
+            const info = try task.getVmRegionSubmapInfo(address, len);
+            return info.info.protection;
         }
 
         pub fn setMaxProtection(task: MachTask, address: u64, len: usize, prot: std.c.vm_prot_t) MachError!void {

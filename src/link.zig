@@ -209,8 +209,13 @@ pub const File = struct {
     /// of this linking operation.
     lock: ?Cache.Lock = null,
 
-    child_pid: ?std.os.pid_t = null,
-    mach_task: ?if (builtin.target.isDarwin()) std.os.darwin.MachTask else void = null,
+    hcs_opts: ?HotCodeOptions = null,
+
+    pub const HotCodeOptions = struct {
+        child_pid: std.os.pid_t,
+        mach_task: ?if (builtin.target.isDarwin()) std.os.darwin.MachTask else void = null,
+        disable_aslr: bool = false,
+    };
 
     pub const LinkBlock = union {
         elf: Elf.TextBlock,
@@ -349,7 +354,7 @@ pub const File = struct {
             .coff, .elf, .macho, .plan9 => {
                 if (base.file != null) return;
                 const emit = base.options.emit orelse return;
-                if (base.child_pid) |pid| {
+                if (base.hcs_opts) |*opts| {
                     const tmp_sub_path = try std.fmt.allocPrint(base.allocator, "{s}-{x}", .{
                         emit.sub_path, std.crypto.random.int(u32),
                     });
@@ -358,8 +363,8 @@ pub const File = struct {
 
                     if (comptime builtin.target.isDarwin()) blk: {
                         if (!base.options.target.isDarwin()) break :blk;
-                        if (base.mach_task == null) {
-                            base.mach_task = try std.os.darwin.machTaskForPid(pid);
+                        if (opts.mach_task == null) {
+                            opts.mach_task = try std.os.darwin.machTaskForPid(opts.child_pid);
                         }
                     }
                 }

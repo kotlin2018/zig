@@ -654,6 +654,10 @@ pub const segment_command_64 = extern struct {
     pub fn segName(seg: segment_command_64) []const u8 {
         return parseName(&seg.segname);
     }
+
+    pub fn isWriteable(seg: segment_command_64) bool {
+        return seg.initprot & PROT.WRITE != 0;
+    }
 };
 
 pub const PROT = struct {

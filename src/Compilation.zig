@@ -5174,8 +5174,8 @@ pub fn compilerRtStrip(comp: Compilation) bool {
     }
 }
 
-pub fn hotCodeSwap(comp: *Compilation, pid: std.os.pid_t) !void {
-    comp.bin_file.child_pid = pid;
+pub fn hotCodeSwap(comp: *Compilation, opts: link.File.HotCodeOptions) !void {
+    comp.bin_file.hcs_opts = opts;
     try comp.makeBinFileWritable();
     try comp.update();
     try comp.makeBinFileExecutable();

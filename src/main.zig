@@ -2855,7 +2855,7 @@ fn buildOutputType(
             defer conn.stream.close();
 
             var buf: [100]u8 = undefined;
-            var child_pid: ?i32 = null;
+            var hcs_opts: ?link.File.HotCodeOptions = null;
 
             while (true) {
                 try comp.makeBinFileExecutable();
@@ -2916,9 +2916,9 @@ fn buildOutputType(
                     },
                     .update_and_run => {
                         tracy.frameMark();
-                        if (child_pid) |pid| {
-                            try conn.stream.writer().print("hot code swap requested for pid {d}", .{pid});
-                            try comp.hotCodeSwap(pid);
+                        if (hcs_opts) |opts| {
+                            try conn.stream.writer().print("hot code swap requested for pid {d}", .{opts.child_pid});
+                            try comp.hotCodeSwap(opts);
 
                             var errors = try comp.getAllErrorsAlloc();
                             defer errors.deinit(comp.gpa);
@@ -2944,7 +2944,7 @@ fn buildOutputType(
                             };
                             try comp.makeBinFileExecutable();
 
-                            child_pid = try runOrTestHotSwap(
+                            hcs_opts = try runOrTestHotSwap(
                                 comp,
                                 gpa,
                                 arena,
@@ -3225,7 +3225,7 @@ fn runOrTestHotSwap(
     arg_mode: ArgMode,
     all_args: []const []const u8,
     runtime_args_start: ?usize,
-) !i32 {
+) !link.File.HotCodeOptions {
     const exe_emit = comp.bin_file.options.emit.?;
     // A naive `directory.join` here will indeed get the correct path to the binary,
     // however, in the case of cwd, we actually want `./foo` so that the path can be executed.
@@ -3265,11 +3265,14 @@ fn runOrTestHotSwap(
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
-    child.disable_aslr = true;
+    child.disable_aslr = false;
 
     try child.spawn();
 
-    return child.pid;
+    return link.File.HotCodeOptions{
+        .child_pid = child.pid,
+        .disable_aslr = child.disable_aslr,
+    };
 }
 
 const AfterUpdateHook = union(enum) {
